@@ -1,0 +1,11 @@
+# Binaries
+LiveDesk_Setup.exe
+*.obj
+*.lib
+*.exp
+*.tmp
+
+# VS / User
+.vs/
+*.user
+Thumbs.db
