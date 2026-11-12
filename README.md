@@ -4,7 +4,7 @@ Native live wallpaper engine for Windows 10 and Windows 11. Plays hardware-accel
 
 ![Windows 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011%20(x64)-0078D4?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-[![Download Installer](https://img.shields.io/badge/Release-v1.0.0%20Installer-black?style=flat-square)](https://github.com/Prathamesh0612/LiveDesk/releases/download/v1.0.0/LiveDesktop_Setup.exe)
+[![Download Installer](https://img.shields.io/badge/Release-v1.0.1%20Installer-black?style=flat-square)](https://github.com/Prathamesh0612/LiveDesktop/releases/download/v1.0.1/LiveDesktop_Setup.exe)
 
 <p align="center">
   <img src="docs/demo.gif" alt="LiveDesktop desktop wallpaper and floating HUD preview" width="760">
@@ -14,9 +14,11 @@ Native live wallpaper engine for Windows 10 and Windows 11. Plays hardware-accel
 
 ## Install
 
-Download **[`LiveDesktop_Setup.exe`](https://github.com/Prathamesh0612/LiveDesk/releases/download/v1.0.0/LiveDesktop_Setup.exe)** from [Releases](https://github.com/Prathamesh0612/LiveDesk/releases).
+Download **[`LiveDesktop_Setup.exe`](https://github.com/Prathamesh0612/LiveDesktop/releases/download/v1.0.1/LiveDesktop_Setup.exe)** from [Releases](https://github.com/Prathamesh0612/LiveDesktop/releases).
 
 The installer (~106 MB) bundles everything required out of the box—application binaries, `libvlc` playback libraries, `TaskbarTap.dll`, `yt-dlp`, and `ffmpeg`—with optional Desktop shortcut and Windows startup registration.
+
+> **Note:** Until code-signing is active, Windows SmartScreen may show a prompt on first launch—click **More info → Run anyway**.
 
 ---
 

@@ -1,0 +1,38 @@
+name: Build LiveDesktop
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build TaskbarTap.dll and LiveDesktop.exe
+        working-directory: Desktop
+        run: |
+          cl /nologo /O2 /MT /LD /EHsc TaskbarTap.cpp /link /DEF:TaskbarTap.def /OUT:TaskbarTap.dll
+          $fw = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319"
+          & "$fw\csc.exe" /nologo /platform:x64 /target:winexe /optimize+ /win32manifest:app.manifest /win32icon:app.ico /out:LiveDesktop.exe /r:"$fw\WPF\PresentationCore.dll" /r:"$fw\WPF\PresentationFramework.dll" /r:"$fw\WPF\WindowsBase.dll" /r:"$fw\WPF\WindowsFormsIntegration.dll" /r:"$fw\System.Xaml.dll" /r:"$fw\System.Windows.Forms.dll" /r:"$fw\System.Drawing.dll" /r:"$fw\Microsoft.CSharp.dll" /r:"$fw\System.Core.dll" /r:"$fw\System.IO.Compression.dll" /r:"$fw\System.IO.Compression.FileSystem.dll" /r:"$fw\System.Web.Extensions.dll" Program.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Unsigned Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiveDesktop-win64
+          path: |
+            Desktop/LiveDesktop.exe
+            Desktop/TaskbarTap.dll
+          if-no-files-found: error

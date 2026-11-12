@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,13 @@ using Forms = System.Windows.Forms;
 using WinFormsHost = System.Windows.Forms.Integration.WindowsFormsHost;
 using Draw = System.Drawing;
 using Microsoft.Win32;
+
+[assembly: AssemblyTitle("LiveDesktop")]
+[assembly: AssemblyDescription("Live wallpaper engine for Windows 10 and 11")]
+[assembly: AssemblyCompany("Prathamesh0612")]
+[assembly: AssemblyProduct("LiveDesktop")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace LivelyMock
 {
