@@ -1,4 +1,4 @@
-# LiveDesk
+# LiveDesktop
 
 > Modern, native Windows 11 & 10 live wallpaper engine with fluid video playback, photos, animated GIFs, and YouTube streaming support.
 
@@ -26,7 +26,7 @@
 
 Download the single-file installer from the [Releases](https://github.com/Prathamesh0612/LiveDesk/releases) section:
 
-👉 **`LiveDesk_Setup.exe`**
+👉 **`LiveDesktop_Setup.exe`**
 
 Double-click to install. It packages all VLC runtimes, taskbar hooks, and tools into one self-contained setup.
 
@@ -44,4 +44,4 @@ To build:
 cd Desktop
 build.bat
 ```
-Output: `LiveDesk.exe` + `TaskbarTap.dll`.
+Output: `LiveDesktop.exe` + `TaskbarTap.dll`.

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -285,17 +285,30 @@ namespace LivelyMock
             get
             {
                 string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string liveDir = System.IO.Path.Combine(appData, "LiveDesk");
+                string liveDir = System.IO.Path.Combine(appData, "LiveDesktop");
+                string prevDir = System.IO.Path.Combine(appData, "LiveDesk");
                 string oldDir = System.IO.Path.Combine(appData, "LivelyMock");
-                if (!Directory.Exists(liveDir) && Directory.Exists(oldDir))
+                if (!Directory.Exists(liveDir))
                 {
-                    try
+                    string src = Directory.Exists(prevDir) ? prevDir : (Directory.Exists(oldDir) ? oldDir : null);
+                    if (src != null)
                     {
-                        Directory.CreateDirectory(liveDir);
-                        foreach (var f in Directory.GetFiles(oldDir))
-                            File.Copy(f, System.IO.Path.Combine(liveDir, System.IO.Path.GetFileName(f)), false);
+                        try
+                        {
+                            Directory.CreateDirectory(liveDir);
+                            foreach (var f in Directory.GetFiles(src))
+                                File.Copy(f, System.IO.Path.Combine(liveDir, System.IO.Path.GetFileName(f)), false);
+                            string srcTools = System.IO.Path.Combine(src, "tools");
+                            if (Directory.Exists(srcTools))
+                            {
+                                string dstTools = System.IO.Path.Combine(liveDir, "tools");
+                                Directory.CreateDirectory(dstTools);
+                                foreach (var f in Directory.GetFiles(srcTools))
+                                    File.Copy(f, System.IO.Path.Combine(dstTools, System.IO.Path.GetFileName(f)), false);
+                            }
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 return liveDir;
             }
@@ -537,7 +550,14 @@ namespace LivelyMock
 
         public static string DefaultDownloadsDir
         {
-            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "LiveDesk"); }
+            get
+            {
+                string baseVid = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+                string newDir = System.IO.Path.Combine(baseVid, "LiveDesktop");
+                string oldDir = System.IO.Path.Combine(baseVid, "LiveDesk");
+                if (!Directory.Exists(newDir) && Directory.Exists(oldDir)) return oldDir;
+                return newDir;
+            }
         }
 
         public static string DownloadsDir
@@ -618,19 +638,27 @@ namespace LivelyMock
             string local = System.IO.Path.Combine(ToolsDir, exeName);
             if (File.Exists(local) && new FileInfo(local).Length > 100000) return local;
 
-            // Legacy LivelyMock check + auto-copy to LiveDesk tools
+            // Legacy LiveDesk / LivelyMock check + auto-copy to LiveDesktop tools
             try
             {
-                string legacy = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LivelyMock", "tools", exeName);
-                if (File.Exists(legacy) && new FileInfo(legacy).Length > 100000)
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string[] legacyDirs =
                 {
-                    try
+                    System.IO.Path.Combine(appData, "LiveDesk", "tools", exeName),
+                    System.IO.Path.Combine(appData, "LivelyMock", "tools", exeName)
+                };
+                foreach (var legacy in legacyDirs)
+                {
+                    if (File.Exists(legacy) && new FileInfo(legacy).Length > 100000)
                     {
-                        Directory.CreateDirectory(ToolsDir);
-                        if (!File.Exists(local)) File.Copy(legacy, local, true);
+                        try
+                        {
+                            Directory.CreateDirectory(ToolsDir);
+                            if (!File.Exists(local)) File.Copy(legacy, local, true);
+                        }
+                        catch { }
+                        return File.Exists(local) ? local : legacy;
                     }
-                    catch { }
-                    return File.Exists(local) ? local : legacy;
                 }
             }
             catch { }
@@ -1201,7 +1229,7 @@ namespace LivelyMock
     static class StartupHelper
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string AppVal = "LiveDesk";
+        const string AppVal = "LiveDesktop";
 
         public static bool IsEnabled()
         {
@@ -1573,7 +1601,7 @@ namespace LivelyMock
                     if (string.IsNullOrEmpty(vlcDir))
                     {
                         if (Application.Current != null && Application.Current.Dispatcher != null)
-                            Application.Current.Dispatcher.BeginInvoke(new Action(() => MessageBox.Show("Video playback engine (vlc\\libvlc.dll) not found.\nKeep the 'vlc' folder next to LiveDesk.exe or install 64-bit VLC Media Player.", "LiveDesk")));
+                            Application.Current.Dispatcher.BeginInvoke(new Action(() => MessageBox.Show("Video playback engine (vlc\\libvlc.dll) not found.\nKeep the 'vlc' folder next to LiveDesktop.exe or install 64-bit VLC Media Player.", "LiveDesktop")));
                         return IntPtr.Zero;
                     }
                     string plugDir = System.IO.Path.Combine(vlcDir, "plugins");
@@ -2164,7 +2192,7 @@ namespace LivelyMock
             plFile = System.IO.Path.Combine(dir, "playlists.txt");
             setFile = System.IO.Path.Combine(dir, "settings.txt");
 
-            Title = "LiveDesk";
+            Title = "LiveDesktop";
             try
             {
                 var exeIco = Draw.Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location);
@@ -2459,7 +2487,7 @@ namespace LivelyMock
             logo.Child = new TextBlock { Text = "\uE7F4", FontFamily = Theme.IconFont, FontSize = 15, Foreground = Theme.AccentFg, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             brand.Children.Add(logo);
             var bt = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            bt.Children.Add(new TextBlock { Text = "LiveDesk", FontSize = 15.0, FontWeight = FontWeights.Bold, Foreground = Theme.TextPrimary });
+            bt.Children.Add(new TextBlock { Text = "LiveDesktop", FontSize = 15.0, FontWeight = FontWeights.Bold, Foreground = Theme.TextPrimary });
             brand.Children.Add(bt);
             DockPanel.SetDock(brand, Dock.Top);
             dp.Children.Add(brand);
@@ -3810,7 +3838,7 @@ namespace LivelyMock
             DockPanel.SetDock(btnResetApp, Dock.Right);
             resetDock.Children.Add(btnResetApp);
             var resetTxt = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-            resetTxt.Children.Add(new TextBlock { Text = "Reset LiveDesk", Foreground = Theme.TextPrimary, FontWeight = FontWeights.SemiBold, FontSize = 13 });
+            resetTxt.Children.Add(new TextBlock { Text = "Reset LiveDesktop", Foreground = Theme.TextPrimary, FontWeight = FontWeights.SemiBold, FontSize = 13 });
             resetTxt.Children.Add(new TextBlock { Text = "Clear all playlists and restore default settings (your files are kept)", Foreground = Theme.TextSecondary, FontSize = 11.5, Margin = new Thickness(0, 2, 0, 0) });
             resetDock.Children.Add(resetTxt);
             resetRow.Child = resetDock;
@@ -3824,8 +3852,8 @@ namespace LivelyMock
         {
             var res = MessageBox.Show(
                 this,
-                "Reset LiveDesk back to default settings and clear all playlists?\n\nYour video and photo files on disk will not be deleted.",
-                "Reset LiveDesk",
+                "Reset LiveDesktop back to default settings and clear all playlists?\n\nYour video and photo files on disk will not be deleted.",
+                "Reset LiveDesktop",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
             if (res != MessageBoxResult.Yes) return;
@@ -4075,9 +4103,9 @@ namespace LivelyMock
         {
             Draw.Icon trayIco = Draw.SystemIcons.Application;
             try { trayIco = Draw.Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? Draw.SystemIcons.Application; } catch { }
-            ni = new Forms.NotifyIcon { Icon = trayIco, Text = "LiveDesk", Visible = true };
+            ni = new Forms.NotifyIcon { Icon = trayIco, Text = "LiveDesktop", Visible = true };
             var menu = new Forms.ContextMenuStrip();
-            menu.Items.Add("Open LiveDesk", null, (s, e) => ShowMe());
+            menu.Items.Add("Open LiveDesktop", null, (s, e) => ShowMe());
             trayPlMenu = new Forms.ToolStripMenuItem("Playlists (1-Click Play)");
             menu.Items.Add(trayPlMenu);
             trayTtbItem = new Forms.ToolStripMenuItem("Transparent Taskbar (Inbuilt)", null, (s, e) =>
@@ -4134,10 +4162,10 @@ namespace LivelyMock
             };
             var dock = new DockPanel();
 
-            // Left: Open LiveDesk icon + Prev / PlayPause / Next
+            // Left: Open LiveDesktop icon + Prev / PlayPause / Next
             var leftBtns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(leftBtns, Dock.Left);
-            var bOpen = FluentIconBtn("\uE8A7", "Open LiveDesk (or Double-Click bar)", () => ShowMe(), false, 28, 7);
+            var bOpen = FluentIconBtn("\uE8A7", "Open LiveDesktop (or Double-Click bar)", () => ShowMe(), false, 28, 7);
             bOpen.Margin = new Thickness(0, 0, 6, 0);
             var bPrev = FluentIconBtn("\uE892", "Previous Wallpaper", () => Step(-1), false, 28, 7);
             hudBtnPlayPause = FluentIconBtn("\uE769", "Play / Pause Wallpaper", () => PauseToggle(), true, 30, 15);
@@ -4166,7 +4194,7 @@ namespace LivelyMock
             hudTxtTime = new TextBlock { Text = "0:00 / 0:00", Foreground = Theme.TextSecondary, FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(hudTxtTime, Dock.Right);
             topRow.Children.Add(hudTxtTime);
-            hudTxtTitle = new TextBlock { Text = "LiveDesk", Foreground = Theme.TextPrimary, FontSize = 11.5, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0) };
+            hudTxtTitle = new TextBlock { Text = "LiveDesktop", Foreground = Theme.TextPrimary, FontSize = 11.5, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0) };
             topRow.Children.Add(hudTxtTitle);
             mid.Children.Add(topRow);
 
@@ -6139,7 +6167,7 @@ namespace LivelyMock
                     var p = e.GetPosition(null);
                     if (Math.Abs(p.X - queueDragStart.X) < 5 && Math.Abs(p.Y - queueDragStart.Y) < 5) return;
                     row.Opacity = 0.45;
-                    try { DragDrop.DoDragDrop(row, new DataObject("LiveDeskQueueIdx", idx), DragDropEffects.Move); }
+                    try { DragDrop.DoDragDrop(row, new DataObject("LiveDesktopQueueIdx", idx), DragDropEffects.Move); }
                     finally { row.Opacity = 1.0; queueDragFrom = -1; }
                 };
                 row.MouseLeftButtonUp += (s, e) =>
@@ -6152,7 +6180,7 @@ namespace LivelyMock
                 };
                 row.DragOver += (s, e) =>
                 {
-                    if (!e.Data.GetDataPresent("LiveDeskQueueIdx")) return;
+                    if (!e.Data.GetDataPresent("LiveDesktopQueueIdx")) return;
                     e.Effects = DragDropEffects.Move;
                     row.BorderBrush = Theme.Accent;
                     e.Handled = true;
@@ -6161,8 +6189,8 @@ namespace LivelyMock
                 row.Drop += (s, e) =>
                 {
                     row.BorderBrush = Brushes.Transparent;
-                    if (!e.Data.GetDataPresent("LiveDeskQueueIdx")) return;
-                    int from = (int)e.Data.GetData("LiveDeskQueueIdx");
+                    if (!e.Data.GetDataPresent("LiveDesktopQueueIdx")) return;
+                    int from = (int)e.Data.GetData("LiveDesktopQueueIdx");
                     e.Handled = true;
                     Dispatcher.BeginInvoke(new Action(() => MoveQueueItem(from, idx)));
                 };
@@ -6426,19 +6454,19 @@ namespace LivelyMock
         static void Main(string[] a)
         {
             bool created;
-            using (var m = new Mutex(true, "LiveDeskSingle", out created))
+            using (var m = new Mutex(true, "LiveDesktopSingle", out created))
             {
                 if (!created)
                 {
                     try
                     {
-                        using (var evSignal = EventWaitHandle.OpenExisting("LiveDeskWakeupEvent"))
+                        using (var evSignal = EventWaitHandle.OpenExisting("LiveDesktopWakeupEvent"))
                             evSignal.Set();
                     }
                     catch { }
                     return;
                 }
-                using (var evWait = new EventWaitHandle(false, EventResetMode.AutoReset, "LiveDeskWakeupEvent"))
+                using (var evWait = new EventWaitHandle(false, EventResetMode.AutoReset, "LiveDesktopWakeupEvent"))
                 {
                     var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                     var w = new MainWin(a.Contains("--tray"));

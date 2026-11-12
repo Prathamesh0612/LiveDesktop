@@ -1,5 +1,6 @@
 # Binaries
 LiveDesk_Setup.exe
+LiveDesktop_Setup.exe
 *.obj
 *.lib
 *.exp
