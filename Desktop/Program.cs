@@ -1869,7 +1869,7 @@ namespace LivelyMock
 
                 uint myPid = (uint)Process.GetCurrentProcess().Id;
                 IntPtr fg = Native.GetForegroundWindow();
-                bool fgIsTrueDesktop = false, fgIsStartMenu = false, fgIsTaskbar = false;
+                bool fgIsTrueDesktop = false, fgIsStartOrTaskbar = false;
                 if (fg == IntPtr.Zero || fg == F.Handle || (DeskHudHandle != IntPtr.Zero && fg == DeskHudHandle))
                 {
                     fgIsTrueDesktop = true;
@@ -1882,10 +1882,8 @@ namespace LivelyMock
                     bool fgShellProc = IsShellOrStartProcess(fgPid, out fgStartProc);
                     if (fc == "Progman" || fc == "WorkerW" || fc == "SHELLDLL_DefView")
                         fgIsTrueDesktop = true;
-                    else if (fgStartProc || fc == "XamlExplorerHostIslandWindow")
-                        fgIsStartMenu = true;
-                    else if (fc == "Shell_TrayWnd" || fc == "Shell_SecondaryTrayWnd" || fgShellProc)
-                        fgIsTaskbar = true;
+                    else if (fgStartProc || fc == "XamlExplorerHostIslandWindow" || fc == "Windows.UI.Core.CoreWindow" || fc == "Shell_TrayWnd" || fc == "Shell_SecondaryTrayWnd" || fgShellProc)
+                        fgIsStartOrTaskbar = true;
                 }
 
                 var scr = Forms.Screen.FromHandle(F.Handle);
@@ -1905,7 +1903,7 @@ namespace LivelyMock
                     int style = Native.GetWindowLong(h, -16);
                     if ((style & 0x40000000) != 0 || (style & 0x08000000) != 0) return true; // WS_CHILD or WS_DISABLED
                     int ex = Native.GetWindowLong(h, -20);
-                    if ((ex & 0x00000080) != 0 || (ex & 0x08000000) != 0 || (ex & 0x00000020) != 0) return true;
+                    if ((ex & 0x00000080) != 0 || (ex & 0x00000020) != 0) return true; // WS_EX_TOOLWINDOW or WS_EX_TRANSPARENT
                     if ((ex & 0x00080000) != 0)
                     {
                         uint ck, fl; byte al;
@@ -1930,8 +1928,8 @@ namespace LivelyMock
                     int w = rgt - lft, hh = bot - top;
                     if (w < 160 || hh < 120) return true;
 
-                    bool coversMon = wFull >= mb.Width - 16 && hFull >= mb.Height - 16;
-                    bool isMaxOrFull = Native.IsZoomed(h) || coversMon || (w >= wa.Width - 28 && hh >= wa.Height - 28);
+                    bool coversMon = wFull >= mb.Width - 32 && hFull >= mb.Height - 32;
+                    bool isMaxOrFull = Native.IsZoomed(h) || coversMon || (w >= wa.Width - 32 && hh >= wa.Height - 32);
                     if (!isMaxOrFull && Native.GetWindowTextLength(h) == 0) return true;
 
                     openApps++;
@@ -1956,48 +1954,36 @@ namespace LivelyMock
                 OpenAppsCount = openApps;
                 ScreenCoveredPercent = Math.Round(covRatio * 100.0);
 
-                bool desktopCovered = anyExclusiveFullscreen || anyMaximized || covRatio >= 0.72 || (openApps >= 3 && covRatio >= 0.62);
+                bool desktopCovered = anyExclusiveFullscreen || anyMaximized || covRatio >= 0.70 || (openApps >= 2 && covRatio >= 0.55);
 
                 if (anyExclusiveFullscreen)
                 {
                     newState = 2;
                 }
-                else if (fgIsStartMenu)
-                {
-                    // Start menu / Search opened: only play audio if NO background app is running
-                    if (desktopCovered)
-                        newState = 2;
-                    else if (openApps > 0)
-                        newState = 1; // App open in background (fullscreen or windowed) -> keep Other App state (muted unless user explicitly chose Keep Audio)
-                    else
-                        newState = 0; // Pure clean desktop with no background apps
-                }
-                else if (fgIsTrueDesktop)
-                {
-                    if (desktopCovered)
-                        newState = 2;
-                    else
-                        newState = 0;
-                }
-                else if (fgIsTaskbar)
-                {
-                    if (desktopCovered)
-                        newState = 2;
-                    else if (openApps > 0)
-                        newState = 1;
-                    else
-                        newState = 0;
-                }
                 else if (desktopCovered)
                 {
-                    newState = 2;
+                    newState = 2; // Fullscreen or maximized app covering the desktop
                 }
-                else if (openApps > 0 || !fgIsTaskbar)
+                else if (openApps > 0)
                 {
-                    newState = 1;
+                    // An app is running in background (fullscreen, maximized, or windowed)
+                    // If user pressed Start button / Taskbar or is switching focus -> KEEP in Other App state (1)
+                    if (fgIsStartOrTaskbar || fg == IntPtr.Zero)
+                    {
+                        newState = 1;
+                    }
+                    else if (fgIsTrueDesktop && covRatio < 0.35)
+                    {
+                        newState = 0; // User clicked on clear desktop area
+                    }
+                    else
+                    {
+                        newState = 1;
+                    }
                 }
                 else
                 {
+                    // Pure clean desktop (no background apps)
                     newState = 0;
                 }
             }
