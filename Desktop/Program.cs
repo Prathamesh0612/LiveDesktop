@@ -1959,17 +1959,47 @@ namespace LivelyMock
                 bool desktopCovered = anyExclusiveFullscreen || anyMaximized || covRatio >= 0.72 || (openApps >= 3 && covRatio >= 0.62);
 
                 if (anyExclusiveFullscreen)
+                {
                     newState = 2;
-                else if (fgIsTrueDesktop || fgIsStartMenu)
-                    newState = 0;
-                else if (fgIsTaskbar && !desktopCovered)
-                    newState = 0;
+                }
+                else if (fgIsStartMenu)
+                {
+                    // Start menu / Search opened: only play audio if NO background app is running
+                    if (desktopCovered)
+                        newState = 2;
+                    else if (openApps > 0)
+                        newState = 1; // App open in background (fullscreen or windowed) -> keep Other App state (muted unless user explicitly chose Keep Audio)
+                    else
+                        newState = 0; // Pure clean desktop with no background apps
+                }
+                else if (fgIsTrueDesktop)
+                {
+                    if (desktopCovered)
+                        newState = 2;
+                    else
+                        newState = 0;
+                }
+                else if (fgIsTaskbar)
+                {
+                    if (desktopCovered)
+                        newState = 2;
+                    else if (openApps > 0)
+                        newState = 1;
+                    else
+                        newState = 0;
+                }
                 else if (desktopCovered)
+                {
                     newState = 2;
+                }
                 else if (openApps > 0 || !fgIsTaskbar)
+                {
                     newState = 1;
+                }
                 else
+                {
                     newState = 0;
+                }
             }
             catch { }
 
@@ -3650,7 +3680,7 @@ namespace LivelyMock
             rStack.Children.Add(new TextBlock { Text = "PLAYBACK", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = Theme.TextMuted, Margin = new Thickness(0, 0, 0, 12) });
 
             // Rule Row 1: Desktop / Start Menu Focused
-            var rr1 = MakeInteractiveRuleRow("\uE7F4", Theme.TextPrimary, "Desktop or Start Menu", "When viewing the desktop or Start menu");
+            var rr1 = MakeInteractiveRuleRow("\uE7F4", Theme.TextPrimary, "Desktop (or Clean Start Menu)", "When viewing the desktop, or Start menu when no apps are open");
             var rr1Pill = new Border { Background = Theme.Accent, CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 5, 12, 5), VerticalAlignment = VerticalAlignment.Center };
             rr1Pill.Child = new TextBlock { Text = "Play Video & Audio", Foreground = Theme.AccentFg, FontSize = 11.5, FontWeight = FontWeights.Bold };
             DockPanel.SetDock(rr1Pill, Dock.Right);
