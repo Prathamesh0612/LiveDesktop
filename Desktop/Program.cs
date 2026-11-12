@@ -617,6 +617,24 @@ namespace LivelyMock
 
             string local = System.IO.Path.Combine(ToolsDir, exeName);
             if (File.Exists(local) && new FileInfo(local).Length > 100000) return local;
+
+            // Legacy LivelyMock check + auto-copy to LiveDesk tools
+            try
+            {
+                string legacy = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LivelyMock", "tools", exeName);
+                if (File.Exists(legacy) && new FileInfo(legacy).Length > 100000)
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(ToolsDir);
+                        if (!File.Exists(local)) File.Copy(legacy, local, true);
+                    }
+                    catch { }
+                    return File.Exists(local) ? local : legacy;
+                }
+            }
+            catch { }
+
             string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
             foreach (var p in pathEnv.Split(';'))
             {
@@ -624,7 +642,7 @@ namespace LivelyMock
                 try
                 {
                     string candidate = System.IO.Path.Combine(p.Trim(), exeName);
-                    if (File.Exists(candidate)) return candidate;
+                    if (File.Exists(candidate) && new FileInfo(candidate).Length > 100000) return candidate;
                 }
                 catch { }
             }
@@ -633,6 +651,58 @@ namespace LivelyMock
 
         public static string GetYtDlpPath() { return FindTool("yt-dlp.exe"); }
         public static string GetFfmpegPath() { return FindTool("ffmpeg.exe"); }
+
+        public static string GetFfmpegDir()
+        {
+            string f = GetFfmpegPath();
+            if (!string.IsNullOrEmpty(f) && File.Exists(f))
+            {
+                return System.IO.Path.GetDirectoryName(f);
+            }
+            return ToolsDir;
+        }
+
+        public static bool MergeMediaStreams(string videoPath, string audioPath, string outputPath)
+        {
+            try
+            {
+                string ffmpeg = GetFfmpegPath();
+                if (string.IsNullOrEmpty(ffmpeg) || !File.Exists(ffmpeg)) return false;
+                if (string.IsNullOrEmpty(videoPath) || !File.Exists(videoPath)) return false;
+                if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath)) return false;
+
+                string outDir = System.IO.Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
+
+                string tempOut = outputPath + ".merging.mp4";
+                if (File.Exists(tempOut)) try { File.Delete(tempOut); } catch { }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffmpeg,
+                    Arguments = "-y -i \"" + videoPath + "\" -i \"" + audioPath + "\" -c copy -movflags +faststart \"" + tempOut + "\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using (var p = Process.Start(psi))
+                {
+                    p.WaitForExit(90000);
+                    if (!p.HasExited) { try { p.Kill(); } catch { } return false; }
+                    if (p.ExitCode != 0) return false;
+                }
+
+                if (File.Exists(tempOut) && new FileInfo(tempOut).Length > 1000)
+                {
+                    if (File.Exists(outputPath)) try { File.Delete(outputPath); } catch { }
+                    File.Move(tempOut, outputPath);
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
 
         public static async Task<bool> EnsureToolsAsync(bool needFfmpeg, Action<string, double> onProgress, CancellationToken ct)
         {
@@ -804,11 +874,12 @@ namespace LivelyMock
             Directory.CreateDirectory(DownloadsDir);
 
             string exe = GetYtDlpPath();
+            string ffmpegDir = GetFfmpegDir();
             string fmt = "bv*[height<=" + maxHeight + "][ext=mp4]+ba[ext=m4a]/bv*[height<=" + maxHeight + "]+ba[ext=m4a]/bv*[height<=" + maxHeight + "]+ba/b[height<=" + maxHeight + "]";
             string outDir = DownloadsDir;
             Directory.CreateDirectory(outDir);
             string outTmpl = System.IO.Path.Combine(outDir, "%(title).110B [%(height)sp-%(id)s].%(ext)s");
-            string args = "--encoding utf-8 --no-playlist --no-simulate --progress --newline --no-warnings --windows-filenames --ffmpeg-location \"" + ToolsDir + "\" -f \"" + fmt + "\" --merge-output-format mp4 -o \"" + outTmpl + "\" --print after_move:filepath \"" + cleanUrl + "\"";
+            string args = "--encoding utf-8 --no-playlist --no-simulate --progress --newline --no-warnings --windows-filenames --ffmpeg-location \"" + ffmpegDir + "\" -f \"" + fmt + "\" --merge-output-format mp4 -o \"" + outTmpl + "\" --print after_move:filepath \"" + cleanUrl + "\"";
 
             return await Task.Run(() =>
             {
@@ -898,6 +969,86 @@ namespace LivelyMock
                     }
                     catch { }
                 }
+
+                // Lossless merge of any separate video and audio streams (e.g. 4K DASH streams like .f401.mp4 + .f140.m4a)
+                try
+                {
+                    string targetVid = !string.IsNullOrEmpty(vid) ? vid : "";
+                    var allOutFiles = Directory.GetFiles(outDir, "*.*");
+
+                    // Check for video fragments matching .f<number>
+                    var vFrags = allOutFiles.Where(f =>
+                    {
+                        string ext = System.IO.Path.GetExtension(f).ToLowerInvariant();
+                        if (ext != ".mp4" && ext != ".webm" && ext != ".mkv") return false;
+                        string fn = System.IO.Path.GetFileNameWithoutExtension(f);
+                        return Regex.IsMatch(fn, @"\.f\d+$");
+                    }).ToList();
+
+                    if (!string.IsNullOrEmpty(finalPath) && Regex.IsMatch(System.IO.Path.GetFileNameWithoutExtension(finalPath), @"\.f\d+$") && !vFrags.Contains(finalPath))
+                    {
+                        vFrags.Add(finalPath);
+                    }
+
+                    foreach (var vf in vFrags)
+                    {
+                        string fn = System.IO.Path.GetFileNameWithoutExtension(vf);
+                        string baseClean = Regex.Replace(fn, @"\.f\d+$", "").Trim();
+                        string targetMerged = System.IO.Path.Combine(outDir, baseClean + ".mp4");
+
+                        // Find corresponding audio fragment
+                        var af = allOutFiles.FirstOrDefault(a =>
+                        {
+                            if (string.Equals(a, vf, StringComparison.OrdinalIgnoreCase)) return false;
+                            string aExt = System.IO.Path.GetExtension(a).ToLowerInvariant();
+                            if (aExt != ".m4a" && aExt != ".opus" && aExt != ".webm" && aExt != ".aac" && aExt != ".mp3") return false;
+                            string aFn = System.IO.Path.GetFileNameWithoutExtension(a);
+                            return aFn.StartsWith(baseClean, StringComparison.OrdinalIgnoreCase);
+                        });
+
+                        if (af != null && File.Exists(af))
+                        {
+                            if (onProgress != null) onProgress("Merging 4K video & audio tracks (lossless)...", 97);
+                            if (MergeMediaStreams(vf, af, targetMerged))
+                            {
+                                try { File.Delete(vf); } catch { }
+                                try { File.Delete(af); } catch { }
+                                if (string.IsNullOrEmpty(finalPath) || string.Equals(finalPath, vf, StringComparison.OrdinalIgnoreCase) || !File.Exists(finalPath))
+                                {
+                                    finalPath = targetMerged;
+                                }
+                            }
+                        }
+                        else if (!File.Exists(targetMerged) && File.Exists(vf))
+                        {
+                            try { File.Move(vf, targetMerged); finalPath = targetMerged; } catch { }
+                        }
+                        else if (File.Exists(targetMerged))
+                        {
+                            finalPath = targetMerged;
+                        }
+                    }
+                }
+                catch { }
+
+                // Clean up any remaining temporary files (.part, .ytdl, orphaned .f140 etc.)
+                try
+                {
+                    if (!string.IsNullOrEmpty(vid))
+                    {
+                        var leftovers = Directory.GetFiles(outDir, "*" + vid + "*.*");
+                        foreach (var lf in leftovers)
+                        {
+                            string lExt = System.IO.Path.GetExtension(lf).ToLowerInvariant();
+                            string lName = System.IO.Path.GetFileNameWithoutExtension(lf);
+                            if (lExt == ".part" || lExt == ".ytdl" || Regex.IsMatch(lName, @"\.f\d+$"))
+                            {
+                                try { File.Delete(lf); } catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
 
                 if (ct.IsCancellationRequested || string.IsNullOrEmpty(finalPath) || !File.Exists(finalPath))
                     return null;
