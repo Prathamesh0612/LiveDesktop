@@ -1181,7 +1181,9 @@ namespace LivelyMock
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
         [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint t, out IntPtr r);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, string l, uint f, uint t, out IntPtr r);
         [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] public static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc p, IntPtr l);
         [DllImport("user32.dll")] public static extern IntPtr SetParent(IntPtr c, IntPtr p);
         [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
@@ -1322,7 +1324,7 @@ namespace LivelyMock
             var accent = new Native.AccentPolicy
             {
                 AccentState = makeClear ? 2 : 0, // 2 = ACCENT_ENABLE_TRANSPARENTGRADIENT, 0 = ACCENT_DISABLED
-                AccentFlags = 2,
+                AccentFlags = makeClear ? 2 : 0,
                 GradientColor = 0x00000000,
                 AnimationId = 0
             };
@@ -1340,8 +1342,12 @@ namespace LivelyMock
                 Native.SetWindowCompositionAttribute(hwnd, ref data);
                 if (!makeClear)
                 {
-                    Native.PostMessage(hwnd, 0x031A /*WM_THEMECHANGED*/, IntPtr.Zero, IntPtr.Zero);
-                    Native.PostMessage(hwnd, 0x031E /*WM_DWMCOMPOSITIONCHANGED*/, IntPtr.Zero, IntPtr.Zero);
+                    IntPtr res;
+                    Native.SendMessageTimeout(hwnd, 0x031A /*WM_THEMECHANGED*/, IntPtr.Zero, IntPtr.Zero, 2, 250, out res);
+                    Native.SendMessageTimeout(hwnd, 0x031E /*WM_DWMCOMPOSITIONCHANGED*/, IntPtr.Zero, IntPtr.Zero, 2, 250, out res);
+                    Native.SendMessageTimeout(hwnd, 0x0320 /*WM_DWMCOLORIZATIONCOLORCHANGED*/, IntPtr.Zero, new IntPtr(1), 2, 250, out res);
+                    Native.SendMessageTimeout(hwnd, 0x001A /*WM_SETTINGCHANGE*/, IntPtr.Zero, "ImmersiveColorSet", 2, 250, out res);
+                    Native.RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero, 0x0485);
                 }
             }
             finally
@@ -1417,6 +1423,15 @@ namespace LivelyMock
                 {
                     Native.ResetEvent(clearEvent);
                     ApplyAllTrayWindows(false);
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try
+                        {
+                            Thread.Sleep(220);
+                            if (!enabled) ApplyAllTrayWindows(false);
+                        }
+                        catch { }
+                    });
                 }
             }
             catch { }
@@ -1439,7 +1454,10 @@ namespace LivelyMock
             {
                 if (clearEvent != IntPtr.Zero)
                 {
+                    enabled = false;
                     Native.ResetEvent(clearEvent);
+                    ApplyAllTrayWindows(false);
+                    Thread.Sleep(150);
                     ApplyAllTrayWindows(false);
                     Native.CloseHandle(clearEvent);
                     clearEvent = IntPtr.Zero;

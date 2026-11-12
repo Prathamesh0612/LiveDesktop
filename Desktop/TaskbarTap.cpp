@@ -34,9 +34,20 @@ static bool IsClearWanted()
 }
 
 class TaskbarTapSite;
-static TaskbarTapSite* g_sites[16] = { 0 };
-static DWORD g_siteThreads[16] = { 0 };
+static CRITICAL_SECTION g_sitesLock;
+static bool g_sitesLockInit = false;
+static TaskbarTapSite* g_sites[32] = { 0 };
+static DWORD g_siteThreads[32] = { 0 };
 static int g_siteCount = 0;
+
+static void EnsureSitesLock()
+{
+    if (!g_sitesLockInit)
+    {
+        InitializeCriticalSection(&g_sitesLock);
+        g_sitesLockInit = true;
+    }
+}
 
 class TaskbarTapSite : public IObjectWithSite, public IVisualTreeServiceCallback2
 {
@@ -47,12 +58,13 @@ class TaskbarTapSite : public IObjectWithSite, public IVisualTreeServiceCallback
     int m_targetCount;
     bool m_timerStarted;
     int m_lastAppliedState; // -1 = unknown, 0 = normal, 1 = clear
+    int m_resetRetries;
     int m_tickCounter;
 
 public:
     TaskbarTapSite()
         : m_ref(1), m_site(NULL), m_service(NULL), m_targetCount(0),
-          m_timerStarted(false), m_lastAppliedState(-1), m_tickCounter(0)
+          m_timerStarted(false), m_lastAppliedState(-1), m_resetRetries(0), m_tickCounter(0)
     {
     }
 
@@ -84,6 +96,25 @@ public:
     // IObjectWithSite
     STDMETHODIMP SetSite(IUnknown* pUnkSite) override
     {
+        if (pUnkSite == NULL)
+        {
+            EnsureSitesLock();
+            EnterCriticalSection(&g_sitesLock);
+            for (int i = 0; i < g_siteCount; i++)
+            {
+                if (g_sites[i] == this)
+                {
+                    g_sites[i] = g_sites[g_siteCount - 1];
+                    g_siteThreads[i] = g_siteThreads[g_siteCount - 1];
+                    g_sites[g_siteCount - 1] = NULL;
+                    g_siteThreads[g_siteCount - 1] = 0;
+                    g_siteCount--;
+                    break;
+                }
+            }
+            LeaveCriticalSection(&g_sitesLock);
+            m_targetCount = 0;
+        }
         if (m_service) { m_service->Release(); m_service = NULL; }
         if (m_site) { m_site->Release(); m_site = NULL; }
         m_site = pUnkSite;
@@ -188,12 +219,28 @@ public:
         int desired = wantClear ? 1 : 0;
         m_tickCounter++;
 
-        if (desired != m_lastAppliedState || (wantClear && (m_tickCounter % 8 == 0)))
+        if (desired != m_lastAppliedState)
         {
             m_lastAppliedState = desired;
+            m_resetRetries = wantClear ? 0 : 6;
             for (int i = 0; i < m_targetCount; i++)
             {
                 ApplyOpacityToHandle(m_targets[i], wantClear);
+            }
+        }
+        else if (wantClear && (m_tickCounter % 8 == 0))
+        {
+            for (int i = 0; i < m_targetCount; i++)
+            {
+                ApplyOpacityToHandle(m_targets[i], true);
+            }
+        }
+        else if (!wantClear && m_resetRetries > 0)
+        {
+            m_resetRetries--;
+            for (int i = 0; i < m_targetCount; i++)
+            {
+                ApplyOpacityToHandle(m_targets[i], false);
             }
         }
     }
@@ -201,12 +248,25 @@ public:
     static VOID CALLBACK StaticTimerProc(HWND, UINT, UINT_PTR, DWORD)
     {
         DWORD tid = GetCurrentThreadId();
-        for (int i = 0; i < g_siteCount; i++)
+        TaskbarTapSite* todo[32];
+        int todoCount = 0;
+
+        EnsureSitesLock();
+        EnterCriticalSection(&g_sitesLock);
+        for (int i = 0; i < g_siteCount && todoCount < 32; i++)
         {
             if (g_siteThreads[i] == tid && g_sites[i] != NULL)
             {
-                g_sites[i]->OnUiTimerTick();
+                g_sites[i]->AddRef();
+                todo[todoCount++] = g_sites[i];
             }
+        }
+        LeaveCriticalSection(&g_sitesLock);
+
+        for (int i = 0; i < todoCount; i++)
+        {
+            todo[i]->OnUiTimerTick();
+            todo[i]->Release();
         }
     }
 
@@ -216,13 +276,30 @@ public:
         if (!m_timerStarted)
         {
             m_timerStarted = true;
-            if (g_siteCount < 16)
+            EnsureSitesLock();
+            EnterCriticalSection(&g_sitesLock);
+            if (g_siteCount < 32)
             {
                 g_sites[g_siteCount] = this;
                 g_siteThreads[g_siteCount] = GetCurrentThreadId();
                 g_siteCount++;
             }
+            LeaveCriticalSection(&g_sitesLock);
             SetTimer(NULL, 0, 120, StaticTimerProc);
+        }
+
+        if (mutationType == Remove)
+        {
+            for (int i = 0; i < m_targetCount; i++)
+            {
+                if (m_targets[i] == element.Handle)
+                {
+                    m_targets[i] = m_targets[m_targetCount - 1];
+                    m_targetCount--;
+                    break;
+                }
+            }
+            return S_OK;
         }
 
         if (mutationType == Add && element.Name != NULL)
